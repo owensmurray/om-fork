@@ -77,6 +77,8 @@ instance (ForkM m) => ForkM (ReaderT a m) where
 newtype Responder a = Responder {
     unResponder :: a -> IO ()
   }
+instance Show (Responder a) where
+  show _ = "Responder"
 
 
 {- | The class of types that can act as the handle for an asynchronous actor. -}
