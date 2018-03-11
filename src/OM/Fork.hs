@@ -1,10 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {- | Provides the `ForkM` typeclass, and other related utilities. -}
 module OM.Fork (
   forkC,
-  ForkM(..),
   Actor(..),
   Responder,
   respond,
@@ -17,13 +16,8 @@ import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar,
 import Control.Exception.Safe (SomeException, try, MonadCatch)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.Logger (logError, askLoggerIO, runLoggingT,
-  MonadLoggerIO, LoggingT, MonadLoggerIO)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
-import Data.Text (pack)
 import System.Exit (ExitCode(ExitFailure))
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr, hFlush, stdout)
 import System.Posix.Process (exitImmediately)
 
 {- |
@@ -32,14 +26,13 @@ import System.Posix.Process (exitImmediately)
   correctly, so we should crash the program instead of running in some
   kind of zombie broken state.
 -}
-forkC :: (ForkM m, MonadCatch m, MonadLoggerIO m)
+forkC :: (MonadCatch m, MonadIO m)
   => String {- ^ The name of the critical thread, used for logging. -}
-  -> m () {- ^ The IO to execute. -}
+  -> IO () {- ^ The IO to execute. -}
   -> m ()
 forkC name action =
-  forkM $ do
-    result <- try action
-    case result of
+  void . liftIO . forkIO $
+    try action >>= \case
       Left err -> do
         let msg =
               "Exception caught in critical thread " ++ show name
@@ -47,30 +40,12 @@ forkC name action =
               ++ "continue without this thread. The error was: "
               ++ show (err :: SomeException)
         {- write the message to every place we can think of. -}
-        $(logError) . pack $ msg
         liftIO (putStrLn msg)
         liftIO (hPutStrLn stderr msg)
+        liftIO (hFlush stdout)
+        liftIO (hFlush stderr)
         liftIO (exitImmediately (ExitFailure 1))
       Right v -> return v
-
-
-{- |
-  Class of monads that can be forked. I'm sure there is a better solution for
-  this, maybe using MonadBaseControl or something. This needs looking into.
--}
-class (Monad m) => ForkM m where
-  forkM :: m () -> m ()
-
-instance ForkM IO where
-  forkM = void . forkIO
-
-instance (ForkM m, MonadIO m) => ForkM (LoggingT m) where
-  forkM action = do
-    logging <- askLoggerIO
-    lift . forkM $ runLoggingT action logging
-
-instance (ForkM m) => ForkM (ReaderT a m) where
-  forkM action = lift . forkM . runReaderT action =<< ask
 
 
 {- | How to respond to a asynchronous message. -}
@@ -90,7 +65,6 @@ class Actor a where
 instance Actor (Chan m) where
   type Msg (Chan m) = m
   actorChan = writeChan
-
 
 
 {- | Respond to an asynchronous message. -}
