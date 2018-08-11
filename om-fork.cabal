@@ -24,7 +24,7 @@ library
   -- other-modules:       
   -- other-extensions:    
   build-depends:
-    base            >= 4.10    && < 4.11,
+    base            >= 4.10    && < 4.12,
     monad-logger    >= 0.3.26  && < 0.4,
     safe-exceptions >= 0.1.6.0 && < 0.2,
     text            >= 1.2.2.2 && < 1.3,
