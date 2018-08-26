@@ -13,7 +13,7 @@ module OM.Fork (
 
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar,
    Chan, writeChan)
-import Control.Exception.Safe (SomeException, try, MonadCatch)
+import Control.Exception.Safe (tryAny)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import System.Exit (ExitCode(ExitFailure))
@@ -26,19 +26,19 @@ import System.Posix.Process (exitImmediately)
   correctly, so we should crash the program instead of running in some
   kind of zombie broken state.
 -}
-forkC :: (MonadCatch m, MonadIO m)
+forkC :: (MonadIO m)
   => String {- ^ The name of the critical thread, used for logging. -}
   -> IO () {- ^ The IO to execute. -}
   -> m ()
 forkC name action =
   void . liftIO . forkIO $
-    try action >>= \case
+    tryAny action >>= \case
       Left err -> do
         let msg =
               "Exception caught in critical thread " ++ show name
               ++ ". We are crashing the entire program because we can't "
               ++ "continue without this thread. The error was: "
-              ++ show (err :: SomeException)
+              ++ show err
         {- write the message to every place we can think of. -}
         liftIO (putStrLn msg)
         liftIO (hPutStrLn stderr msg)
