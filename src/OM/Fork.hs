@@ -6,6 +6,7 @@ module OM.Fork (
   forkC,
   Actor(..),
   Responder,
+  Responded,
   respond,
   call,
   cast,
@@ -68,8 +69,10 @@ instance Actor (Chan m) where
 
 
 {- | Respond to an asynchronous message. -}
-respond :: (MonadIO m) => Responder a -> a -> m ()
-respond responder = liftIO . unResponder responder
+respond :: (MonadIO m) => Responder a -> a -> m Responded
+respond responder val = do
+  liftIO (unResponder responder val)
+  return Responded
 
 
 {- | Send a message to an actor, and wait for a response. -}
@@ -83,5 +86,14 @@ call actor mkMessage = liftIO $ do
 {- | Send a message to an actor, but do not wait for a response. -}
 cast :: (Actor actor, MonadIO m) => actor -> Msg actor -> m ()
 cast actor = liftIO . actorChan actor
+
+
+{- |
+  Proof that 'respond' was called. Clients can use this type in their
+  type signatures when they require that 'respond' be called at least
+  once, because calling 'respond' is the only way to generate values of
+  this type.
+-}
+data Responded = Responded
 
 
