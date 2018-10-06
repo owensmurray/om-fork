@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {- | Provides the `ForkM` typeclass, and other related utilities. -}
@@ -10,16 +12,23 @@ module OM.Fork (
   respond,
   call,
   cast,
+  logUnexpectedTermination,
 ) where
 
+
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar,
-   Chan, writeChan)
-import Control.Exception.Safe (tryAny)
+  Chan, writeChan)
+import Control.Exception.Safe (SomeException, tryAsync, throw, MonadCatch,
+  tryAny)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.Logger (logWarn, MonadLogger)
+import Data.Text (Text)
+import OM.Show (showt)
 import System.Exit (ExitCode(ExitFailure))
 import System.IO (hPutStrLn, stderr, hFlush, stdout)
 import System.Posix.Process (exitImmediately)
+
 
 {- |
   Forks a critical thread. \"Critical\" in this case means that if the
@@ -95,5 +104,21 @@ cast actor = liftIO . actorChan actor
   this type.
 -}
 data Responded = Responded
+
+
+{- | Log (at WARN) when an terminates for any reason. -}
+logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
+  => Text
+  -> m a
+  -> m a
+logUnexpectedTermination name action =
+  tryAsync action >>= \case
+    Left err -> do
+      $(logWarn)
+        $ "Action " <> name <> " finished with an error: " <> showt err
+      throw (err :: SomeException)
+    Right v -> do
+      $(logWarn) $ "Action " <> name <> " finished normally."
+      return v
 
 
