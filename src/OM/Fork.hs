@@ -1,51 +1,34 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {- | Provides the `ForkM` typeclass, and other related utilities. -}
 module OM.Fork (
-  forkC,
   Actor(..),
   Responder,
+  Responded,
   respond,
   call,
   cast,
+  logUnexpectedTermination,
+  Background(..),
+  raceLog_,
 ) where
 
-import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar,
-   Chan, writeChan)
-import Control.Exception.Safe (tryAny)
-import Control.Monad (void)
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import System.Exit (ExitCode(ExitFailure))
-import System.IO (hPutStrLn, stderr, hFlush, stdout)
-import System.Posix.Process (exitImmediately)
 
-{- |
-  Forks a critical thread. \"Critical\" in this case means that if the
-  thread crashes for whatever reason, then the program cannot continue
-  correctly, so we should crash the program instead of running in some
-  kind of zombie broken state.
--}
-forkC :: (MonadIO m)
-  => String {- ^ The name of the critical thread, used for logging. -}
-  -> IO () {- ^ The IO to execute. -}
-  -> m ()
-forkC name action =
-  void . liftIO . forkIO $
-    tryAny action >>= \case
-      Left err -> do
-        let msg =
-              "Exception caught in critical thread " ++ show name
-              ++ ". We are crashing the entire program because we can't "
-              ++ "continue without this thread. The error was: "
-              ++ show err
-        {- write the message to every place we can think of. -}
-        liftIO (putStrLn msg)
-        liftIO (hPutStrLn stderr msg)
-        liftIO (hFlush stdout)
-        liftIO (hFlush stderr)
-        liftIO (exitImmediately (ExitFailure 1))
-      Right v -> return v
+import Control.Concurrent (newEmptyMVar, putMVar, takeMVar, Chan,
+  writeChan)
+import Control.Concurrent.Async (Async)
+import Control.Exception.Safe (SomeException, tryAsync, throw, MonadCatch)
+import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.Logger (logWarn, MonadLogger, MonadLoggerIO,
+  LoggingT, askLoggerIO, runLoggingT)
+import Data.Text (Text)
+import Data.Void (Void)
+import OM.Show (showt)
+import qualified Control.Concurrent.Async as Async
 
 
 {- | How to respond to a asynchronous message. -}
@@ -68,8 +51,10 @@ instance Actor (Chan m) where
 
 
 {- | Respond to an asynchronous message. -}
-respond :: (MonadIO m) => Responder a -> a -> m ()
-respond responder = liftIO . unResponder responder
+respond :: (MonadIO m) => Responder a -> a -> m Responded
+respond responder val = do
+  liftIO (unResponder responder val)
+  return Responded
 
 
 {- | Send a message to an actor, and wait for a response. -}
@@ -83,5 +68,47 @@ call actor mkMessage = liftIO $ do
 {- | Send a message to an actor, but do not wait for a response. -}
 cast :: (Actor actor, MonadIO m) => actor -> Msg actor -> m ()
 cast actor = liftIO . actorChan actor
+
+
+{- |
+  Proof that 'respond' was called. Clients can use this type in their
+  type signatures when they require that 'respond' be called at least
+  once, because calling 'respond' is the only way to generate values of
+  this type.
+-}
+data Responded = Responded
+
+
+{- | Log (at WARN) when an terminates for any reason. -}
+logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
+  => Text
+  -> m a
+  -> m a
+logUnexpectedTermination name action =
+  tryAsync action >>= \case
+    Left err -> do
+      $(logWarn)
+        $ "Action " <> name <> " finished with an error: " <> showt err
+      throw (err :: SomeException)
+    Right v -> do
+      $(logWarn) $ "Action " <> name <> " finished normally."
+      return v
+
+
+{- | Like 'race_', but with logging. -}
+raceLog_ :: (MonadLoggerIO m) => LoggingT IO a -> LoggingT IO b -> m ()
+raceLog_ a b = do
+  logging <- askLoggerIO
+  liftIO $ Async.race_ (runLoggingT a logging) (runLoggingT b logging)
+
+
+{- |
+  The class of things that have nonterminating (under normal conditions)
+  background threads associated with them.
+-}
+class Background a where
+  getAsync :: a -> Async Void
+instance Background (Async Void) where
+  getAsync = id
 
 
