@@ -24,6 +24,7 @@ library
   -- other-modules:       
   -- other-extensions:    
   build-depends:
+    async           >= 2.2.1   && < 2.3,
     base            >= 4.10    && < 4.12,
     monad-logger    >= 0.3.26  && < 0.4,
     om-show         >= 0.1.0.2 && < 0.2,

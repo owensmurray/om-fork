@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -12,16 +13,22 @@ module OM.Fork (
   call,
   cast,
   logUnexpectedTermination,
+  Background(..),
+  raceLog_,
 ) where
 
 
 import Control.Concurrent (newEmptyMVar, putMVar, takeMVar, Chan,
   writeChan)
+import Control.Concurrent.Async (Async)
 import Control.Exception.Safe (SomeException, tryAsync, throw, MonadCatch)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.Logger (logWarn, MonadLogger)
+import Control.Monad.Logger (logWarn, MonadLogger, MonadLoggerIO,
+  LoggingT, askLoggerIO, runLoggingT)
 import Data.Text (Text)
+import Data.Void (Void)
 import OM.Show (showt)
+import qualified Control.Concurrent.Async as Async
 
 
 {- | How to respond to a asynchronous message. -}
@@ -86,5 +93,22 @@ logUnexpectedTermination name action =
     Right v -> do
       $(logWarn) $ "Action " <> name <> " finished normally."
       return v
+
+
+{- | Like 'race_', but with logging. -}
+raceLog_ :: (MonadLoggerIO m) => LoggingT IO a -> LoggingT IO b -> m ()
+raceLog_ a b = do
+  logging <- askLoggerIO
+  liftIO $ Async.race_ (runLoggingT a logging) (runLoggingT b logging)
+
+
+{- |
+  The class of things that have nonterminating (under normal conditions)
+  background threads associated with them.
+-}
+class Background a where
+  getAsync :: a -> Async Void
+instance Background (Async Void) where
+  getAsync = id
 
 
