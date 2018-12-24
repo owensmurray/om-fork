@@ -8,6 +8,7 @@
 module OM.Fork (
   Actor(..),
   Responder,
+  mkResponder,
   Responded,
   respond,
   call,
@@ -37,6 +38,11 @@ newtype Responder a = Responder {
   }
 instance Show (Responder a) where
   show _ = "Responder"
+
+
+{- | Make a new responder. -}
+mkResponder :: (a -> IO ()) -> Responder a
+mkResponder = Responder
 
 
 {- | The class of types that can act as the handle for an asynchronous actor. -}
