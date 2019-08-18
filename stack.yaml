@@ -3,4 +3,4 @@ packages:
 - .
 extra-deps:
 - om-show-0.1.0.3
-resolver: lts-13.0
+resolver: lts-13.30
