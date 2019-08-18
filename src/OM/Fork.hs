@@ -25,6 +25,7 @@ import Control.Exception.Safe (SomeException, tryAsync, throw, MonadCatch)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLogger, MonadLoggerIO,
   LoggingT, askLoggerIO, runLoggingT)
+import Data.Aeson (ToJSON, toJSON)
 import Data.Text (Text)
 import Data.Void (Void)
 import OM.Show (showt)
@@ -35,6 +36,8 @@ import qualified Control.Concurrent.Async as Async
 newtype Responder a = Responder {
     unResponder :: a -> IO ()
   }
+instance ToJSON (Responder a) where
+  toJSON _ = toJSON ("<Responder>" :: Text)
 instance Show (Responder a) where
   show _ = "Responder"
 
