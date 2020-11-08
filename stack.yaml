@@ -2,5 +2,5 @@ flags: {}
 packages:
 - .
 extra-deps:
-- om-show-0.1.0.3
-resolver: lts-13.30
+  - http://localhost:4563/package/om-show-0.1.1.1.tar.gz
+resolver: lts-16.20
