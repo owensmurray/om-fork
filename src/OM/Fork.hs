@@ -1,35 +1,43 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Provides the `ForkM` typeclass, and other related utilities. -}
+{- | Description: Thread utilities. -}
 module OM.Fork (
+  -- * Actor Communication.
   Actor(..),
   Responder,
   Responded,
   respond,
   call,
   cast,
+
+  -- * Forking Background Processes.
   logUnexpectedTermination,
-  Background(..),
-  raceLog_,
+  Race,
+  runRace,
+  race,
+  wait,
 ) where
 
 
-import Control.Concurrent (newEmptyMVar, putMVar, takeMVar, Chan,
+import Control.Concurrent (Chan, newEmptyMVar, putMVar, takeMVar,
   writeChan)
-import Control.Concurrent.Async (Async)
-import Control.Exception.Safe (SomeException, tryAsync, throw, MonadCatch)
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.Logger (logWarn, MonadLogger, MonadLoggerIO,
-  LoggingT, askLoggerIO, runLoggingT)
+import Control.Monad (void)
+import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, SomeException,
+  try)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Unlift (MonadUnliftIO, askRunInIO)
+import Control.Monad.Logger (MonadLogger, logWarn)
 import Data.Aeson (ToJSON, toJSON)
 import Data.Text (Text)
-import Data.Void (Void)
 import OM.Show (showt)
-import qualified Control.Concurrent.Async as Async
+import qualified Ki
 
 
 {- | How to respond to a asynchronous message. -}
@@ -82,36 +90,55 @@ cast actor = liftIO . actorChan actor
 data Responded = Responded
 
 
-{- | Log (at WARN) when an terminates for any reason. -}
+{- | Log (at WARN) when the action terminates for any reason. -}
 logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
   => Text
   -> m a
   -> m a
 logUnexpectedTermination name action =
-  tryAsync action >>= \case
+  try action >>= \case
     Left err -> do
       $(logWarn)
         $ "Action " <> name <> " finished with an error: " <> showt err
-      throw (err :: SomeException)
+      throwM (err :: SomeException)
     Right v -> do
       $(logWarn) $ "Action " <> name <> " finished normally."
       return v
 
 
-{- | Like 'race_', but with logging. -}
-raceLog_ :: (MonadLoggerIO m) => LoggingT IO a -> LoggingT IO b -> m ()
-raceLog_ a b = do
-  logging <- askLoggerIO
-  liftIO $ Async.race_ (runLoggingT a logging) (runLoggingT b logging)
+{- |
+  Run a thread scope. When the scope terminates, all threads (created with
+  'fork_') within the scope are terminated.
+-}
+runRace :: (MonadUnliftIO m) => (Race => m a) -> m a
+runRace action = do
+  runInIO <- askRunInIO
+  liftIO . Ki.scoped $ \scope ->
+    runInIO (let ?scope = scope in action)
 
 
 {- |
-  The class of things that have nonterminating (under normal conditions)
-  background threads associated with them.
+  This constraint indicates that we are in the context of a thread race. If any
+  threads in the race terminate, then all threads in the race terminate.
+  Threads are "in the race" if they were forked using 'race'.
 -}
-class Background a where
-  getAsync :: a -> Async Void
-instance Background (Async Void) where
-  getAsync = id
+type Race = (?scope :: Ki.Scope)
+
+
+{- |
+  Fork a new thread within the context of a race. This thread will be
+  terminated when any other racing thread terminates, or else if this
+  thread terminates first, it will cause all other racing threads to
+  be terminated.
+-}
+race :: (MonadUnliftIO m, Race) => m a -> m ()
+race action = do
+  runInIO <- askRunInIO
+  liftIO . Ki.fork_ ?scope . runInIO . void $ action
+
+
+{- | Wait for all racing threads to terminate. -}
+wait :: (MonadIO m, Race) => m ()
+wait = liftIO $ Ki.wait ?scope
 
 
