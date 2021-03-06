@@ -1,5 +1,7 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -19,6 +21,7 @@ module OM.Fork (
 
   -- * Forking Background Processes.
   logUnexpectedTermination,
+  ProcessName(..),
   Race,
   runRace,
   race,
@@ -26,17 +29,18 @@ module OM.Fork (
 ) where
 
 
-import Control.Concurrent (Chan, newEmptyMVar, putMVar, takeMVar,
-  writeChan)
+import Control.Concurrent (Chan, myThreadId, newEmptyMVar, putMVar,
+  takeMVar, writeChan)
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, SomeException,
   try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.IO.Unlift (MonadUnliftIO, askRunInIO)
 import Control.Monad.Logger (MonadLogger, logWarn)
 import Data.Aeson (ToJSON, toJSON)
+import Data.String (IsString)
 import Data.Text (Text)
 import OM.Show (showt)
+import UnliftIO (MonadUnliftIO, askRunInIO, throwString)
 import qualified Ki
 
 
@@ -92,10 +96,10 @@ data Responded = Responded
 
 {- | Log (at WARN) when the action terminates for any reason. -}
 logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
-  => Text
+  => ProcessName
   -> m a
   -> m a
-logUnexpectedTermination name action =
+logUnexpectedTermination (ProcessName name) action =
   try action >>= \case
     Left err -> do
       $(logWarn)
@@ -131,10 +135,30 @@ type Race = (?scope :: Ki.Scope)
   thread terminates first, it will cause all other racing threads to
   be terminated.
 -}
-race :: (MonadUnliftIO m, Race) => m a -> m ()
-race action = do
+race
+  :: ( MonadCatch m
+     , MonadLogger m
+     , MonadUnliftIO m
+     , Race
+     )
+  => ProcessName
+  -> m a
+  -> m ()
+race name action = do
   runInIO <- askRunInIO
-  liftIO . Ki.fork_ ?scope . runInIO . void $ action
+  liftIO
+    . Ki.fork_ ?scope
+    $ do
+      runInIO . logUnexpectedTermination name $ void action
+      tid <- myThreadId
+      throwString $ "Thread Finished: " <> show tid
+
+
+{- | The name of a process. -}
+newtype ProcessName = ProcessName
+  { unProcessName :: Text
+  }
+  deriving newtype (IsString, Semigroup, Monoid)
 
 
 {- | Wait for all racing threads to terminate. -}
