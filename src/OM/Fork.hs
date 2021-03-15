@@ -6,7 +6,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {- | Description: Thread utilities. -}
@@ -35,7 +34,7 @@ import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, SomeException,
   try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Logger (MonadLogger, logWarn)
+import Control.Monad.Logger.CallStack (MonadLogger, logWarn)
 import Data.Aeson (ToJSON, toJSON)
 import Data.String (IsString)
 import Data.Text (Text)
@@ -102,11 +101,11 @@ logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
 logUnexpectedTermination (ProcessName name) action =
   try action >>= \case
     Left err -> do
-      $(logWarn)
+      logWarn
         $ "Action " <> name <> " finished with an error: " <> showt err
       throwM (err :: SomeException)
     Right v -> do
-      $(logWarn) $ "Action " <> name <> " finished normally."
+      logWarn $ "Action " <> name <> " finished normally."
       return v
 
 
