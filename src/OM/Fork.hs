@@ -6,7 +6,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 {- | Description: Thread utilities. -}
@@ -35,7 +34,7 @@ import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, SomeException,
   try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Logger (MonadLogger, logWarn)
+import Control.Monad.Logger.CallStack (MonadLogger, logInfo, logWarn)
 import Data.Aeson (ToJSON, toJSON)
 import Data.String (IsString)
 import Data.Text (Text)
@@ -102,11 +101,11 @@ logUnexpectedTermination :: (MonadLogger m, MonadCatch m)
 logUnexpectedTermination (ProcessName name) action =
   try action >>= \case
     Left err -> do
-      $(logWarn)
-        $ "Action " <> name <> " finished with an error: " <> showt err
+      logWarn
+        $ "Thread " <> name <> " finished with an error: " <> showt err
       throwM (err :: SomeException)
     Right v -> do
-      $(logWarn) $ "Action " <> name <> " finished normally."
+      logWarn $ "Thread " <> name <> " finished normally."
       return v
 
 
@@ -149,16 +148,18 @@ race name action = do
   liftIO
     . Ki.fork_ ?scope
     $ do
-      runInIO . logUnexpectedTermination name $ void action
       tid <- myThreadId
-      throwString $ "Thread Finished: " <> show tid
+      runInIO . logUnexpectedTermination name $ do
+        logInfo $ "Starting thread (tid, name): " <> showt (tid, name)
+        void action
+      throwString $ "Thread Finished (tid, name): " <> show (tid, name)
 
 
 {- | The name of a process. -}
 newtype ProcessName = ProcessName
   { unProcessName :: Text
   }
-  deriving newtype (IsString, Semigroup, Monoid)
+  deriving newtype (IsString, Semigroup, Monoid, Show)
 
 
 {- | Wait for all racing threads to terminate. -}
