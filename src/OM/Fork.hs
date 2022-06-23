@@ -76,8 +76,32 @@ call
   :: ( Actor actor
      , MonadIO m
      )
-  => actor
+  => actor {- ^ The actor to which we are sending a call request. -}
   -> (Responder a -> Msg actor)
+     {- ^
+       Given a way for the actor to respond to the message, construct
+       a message that should be sent to the actor.
+
+       Typically, your 'Msg' type will look something like this:
+
+       > data MyMsg
+       >   = MsgWithResponse SomeData (Responder ResponseType)
+       >     -- In this example, this type of message requires a
+       >     -- response. We package the responder up as part of the
+       >     -- message itself. Idiomatically it is best to put the
+       >     -- responder as the last argument so that it is easy to pass
+       >     -- 'MsgWithResponse someData' to 'call'.
+       >   | MsgWithoutResponse SomeData
+       >     -- In this example, this type of message requires no response. It
+       >     -- is a "fire and forget" message.
+
+       you will call 'call' like this:
+
+       > do
+       >   response <- call actor (MsgWithResponse someData)
+       >   -- response :: ResponseType
+
+     -}
   -> m a
 call actor mkMessage = liftIO $ do
   mVar <- newEmptyMVar
@@ -116,12 +140,20 @@ logUnexpectedTermination (ProcessName name) action =
 
 
 {- |
-  Run a thread scope. When the scope terminates, all threads (created with
-  'fork_') within the scope are terminated.
+  Run a thread race.
+
+  Within the provided action, you can call 'race' to fork new background
+  threads. When the action terminates, all background threads forked
+  with 'race' are also terminated. Likewise, if any one of the racing
+  threads terminates, then all other racing threads are terminated _and_
+  'runRace' will throw an exception.
+
+  In any event, when 'runRace' returns, all background threads forked
+  by the @action@ using 'race' will have been terminated.
 -}
 runRace
   :: (MonadUnliftIO m)
-  => (Race => m a)
+  => (Race => m a) {- ^ - @action@: The provided "race" action. -}
   -> m a
 runRace action = do
   runInIO <- askRunInIO
@@ -140,8 +172,11 @@ type Race = (?scope :: Ki.Scope)
 {- |
   Fork a new thread within the context of a race. This thread will be
   terminated when any other racing thread terminates, or else if this
-  thread terminates first, it will cause all other racing threads to
+  thread terminates first it will cause all other racing threads to
   be terminated.
+
+  Generally, we normally expect that the thread is a "background thread"
+  and will never terminate under "normal" conditions.
 -}
 race
   :: ( MonadCatch m
