@@ -72,7 +72,13 @@ respond responder val = do
 
 
 {- | Send a message to an actor, and wait for a response. -}
-call :: (Actor actor, MonadIO m) => actor -> (Responder a -> Msg actor) -> m a
+call
+  :: ( Actor actor
+     , MonadIO m
+     )
+  => actor
+  -> (Responder a -> Msg actor)
+  -> m a
 call actor mkMessage = liftIO $ do
   mVar <- newEmptyMVar
   actorChan actor (mkMessage (Responder (putMVar mVar)))
@@ -113,7 +119,10 @@ logUnexpectedTermination (ProcessName name) action =
   Run a thread scope. When the scope terminates, all threads (created with
   'fork_') within the scope are terminated.
 -}
-runRace :: (MonadUnliftIO m) => (Race => m a) -> m a
+runRace
+  :: (MonadUnliftIO m)
+  => (Race => m a)
+  -> m a
 runRace action = do
   runInIO <- askRunInIO
   liftIO . Ki.scoped $ \scope ->
