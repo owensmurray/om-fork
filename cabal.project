@@ -1,0 +1,6 @@
+packages:
+  "."
+package om-fork
+  ghc-options:
+    -Werror
+
