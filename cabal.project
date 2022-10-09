@@ -4,3 +4,7 @@ package om-fork
   ghc-options:
     -Werror
 
+source-repository-package
+  type: git
+  location: https://github.com/owensmurray/om-show.git
+  tag: om-show-0.1.2.2
