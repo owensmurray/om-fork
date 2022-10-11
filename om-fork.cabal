@@ -4,7 +4,7 @@ version:             0.7.1.5
 synopsis:            Haskell concurrency utilities.
 -- description:         
 homepage:            https://github.com/owensmurray/om-fork
-license:             NONE
+license:             MIT
 license-file:        LICENSE
 author:              Rick Owens
 maintainer:          rick@owensmurray.com
