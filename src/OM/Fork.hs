@@ -38,6 +38,7 @@ import Control.Monad.Logger.CallStack (MonadLogger, logInfo, logWarn)
 import Data.Aeson (ToJSON, toJSON)
 import Data.String (IsString)
 import Data.Text (Text)
+import GHC.Conc (atomically)
 import OM.Show (showt)
 import UnliftIO (MonadUnliftIO, askRunInIO, throwString)
 import qualified Ki
@@ -208,6 +209,6 @@ newtype ProcessName = ProcessName
 
 {- | Wait for all racing threads to terminate. -}
 wait :: (MonadIO m, Race) => m ()
-wait = liftIO $ Ki.wait ?scope
+wait = liftIO . atomically $ Ki.awaitAll ?scope
 
 
