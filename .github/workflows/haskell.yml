@@ -94,7 +94,7 @@ jobs:
             aeson == 2.0.3.0,
             base == 4.15.1.0,
             exceptions == 0.10.4,
-            ki == 1.0.0,
+            ki-unlifted == 1.0.0.2,
             monad-logger == 0.3.36,
             om-show == 0.1.2.6,
             text == 1.2.5.0,
