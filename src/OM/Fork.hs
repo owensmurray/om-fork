@@ -33,15 +33,17 @@ import Control.Concurrent (Chan, myThreadId, newEmptyMVar, putMVar,
 import Control.Monad (void)
 import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, SomeException,
   try)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Logger.CallStack (MonadLogger, logInfo, logWarn)
-import Data.Aeson (ToJSON, toJSON)
+import Data.Aeson (ToJSON(toJSON))
 import Data.String (IsString)
 import Data.Text (Text)
 import GHC.Conc (atomically)
 import OM.Show (showt)
-import UnliftIO (MonadUnliftIO, askRunInIO, throwString)
-import qualified Ki
+import Prelude (Either(Left, Right), Monad((>>=), return),
+  Semigroup((<>)), Show(show), ($), (.), IO, Monoid)
+import UnliftIO (MonadUnliftIO, throwString)
+import qualified Ki.Unlifted as Ki
 
 
 {- | How to respond to a asynchronous message. -}
@@ -157,9 +159,8 @@ runRace
   => (Race => m a) {- ^ - @action@: The provided "race" action. -}
   -> m a
 runRace action = do
-  runInIO <- askRunInIO
-  liftIO . Ki.scoped $ \scope ->
-    runInIO (let ?scope = scope in action)
+  Ki.scoped $ \scope ->
+    let ?scope = scope in action
 
 
 {- |
@@ -189,15 +190,12 @@ race
   -> m a
   -> m ()
 race name action = do
-  runInIO <- askRunInIO
-  liftIO
-    . Ki.fork_ ?scope
-    $ do
-      tid <- myThreadId
-      runInIO . logUnexpectedTermination name $ do
-        logInfo $ "Starting thread (tid, name): " <> showt (tid, name)
-        void action
-      throwString $ "Thread Finished (tid, name): " <> show (tid, name)
+  Ki.fork_ ?scope $ do
+    tid <- liftIO myThreadId
+    logUnexpectedTermination name $ do
+      logInfo $ "Starting thread (tid, name): " <> showt (tid, name)
+      void action
+    throwString $ "Thread Finished (tid, name): " <> show (tid, name)
 
 
 {- | The name of a process. -}
