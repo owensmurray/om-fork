@@ -1,6 +1,6 @@
 cabal-version:       3.0
 name:                om-fork
-version:             0.7.1.12
+version:             0.7.1.13
 synopsis:            Concurrency utilities.
 description:         Actor pattern and some limited structured concurrency
                      tools
@@ -14,6 +14,7 @@ copyright:           2025 Owens Murray, LLC.
 build-type:          Simple
 extra-source-files:
   README.md
+  changelog.md
   LICENSE
 
 common dependencies
